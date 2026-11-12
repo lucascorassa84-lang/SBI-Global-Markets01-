@@ -2,6 +2,8 @@ package com.sbi.globalmarkets
 
 import android.app.Activity
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Color
 import android.graphics.Typeface
 import android.view.Gravity
@@ -23,6 +25,16 @@ class MainActivity : Activity() {
     private val muted = Color.rgb(170, 185, 204)
     private val accent = Color.rgb(69, 207, 160)
     private val worker = Executors.newSingleThreadExecutor()
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private var polling = false
+    private val refreshTask = object : Runnable {
+        override fun run() {
+            if (!isFinishing && !isDestroyed) {
+                refreshCrypto()
+                refreshHandler.postDelayed(this, 30_000L)
+            }
+        }
+    }
     private lateinit var root: LinearLayout
     private var timeframe = "M5"
     private var category = "Todos"
@@ -46,7 +58,7 @@ class MainActivity : Activity() {
         window.statusBarColor = bg
         window.navigationBarColor = bg
         draw()
-        refreshCrypto()
+        refreshHandler.post(refreshTask)
     }
 
     private fun label(value: String, size: Float = 16f, color: Int = Color.WHITE, bold: Boolean = false): TextView {
@@ -84,6 +96,7 @@ class MainActivity : Activity() {
         setContentView(scroll)
         root.addView(label("SBI Global Markets", 27f, Color.WHITE, true))
         root.addView(label("Scanner internacional • V0.2", 14f, muted))
+        root.addView(label("BTC/USD e ETH/USD: atualização automática a cada 30 segundos", 12f, accent))
         root.addView(label("Acompanhamento de mercados • Sem execução de ordens", 13f, muted))
 
         root.addView(label("Tempo gráfico", 18f, Color.WHITE, true))
@@ -126,6 +139,8 @@ class MainActivity : Activity() {
     }
 
     private fun refreshCrypto() {
+        if (polling) return
+        polling = true
         quoteStatus = "Consultando Kraken..."
         draw()
         worker.execute {
@@ -166,12 +181,14 @@ class MainActivity : Activity() {
                 } else {
                     quoteStatus = error
                 }
+                polling = false
                 draw()
             }
         }
     }
 
     override fun onDestroy() {
+        refreshHandler.removeCallbacks(refreshTask)
         worker.shutdownNow()
         super.onDestroy()
     }

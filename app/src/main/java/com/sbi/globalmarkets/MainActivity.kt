@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -121,8 +122,15 @@ class MainActivity : Activity() {
         }
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(root) }
         setContentView(scroll)
+        scroll.setOnApplyWindowInsetsListener { view, insets ->
+            val top = insets.getSystemWindowInsetTop()
+            val bottom = insets.getSystemWindowInsetBottom()
+            root.setPadding(22, 26 + top, 22, 32 + bottom)
+            insets
+        }
+        scroll.requestApplyInsets()
         root.addView(label("SBI Global Markets", 27f, Color.WHITE, true))
-        root.addView(label("Scanner internacional • V0.4", 14f, muted))
+        root.addView(label("Scanner internacional • V0.4.2", 14f, muted))
         root.addView(label("Cripto: WebSocket Kraken • demais mercados: consultas indicativas", 12f, accent))
         root.addView(label(streamStatus, 12f, muted))
         root.addView(label("Acompanhamento de mercados • Sem execução de ordens", 13f, muted))
@@ -135,8 +143,8 @@ class MainActivity : Activity() {
             root.addView(nav)
         }
         if (section == "Gráficos") {
-            root.addView(label("Candles reais • Kraken Spot", 20f, Color.WHITE, true))
-            root.addView(label("Cripto: Kraken Spot • demais ativos: Yahoo Finance indicativo.", 13f, muted))
+            root.addView(label("Gráficos de candles • fontes externas", 20f, Color.WHITE, true))
+            root.addView(label("Cripto: Kraken Spot • demais ativos: Yahoo Finance indicativo; XAU/USD usa futuro de ouro GC=F, não CFD spot.", 13f, muted))
             markets.map { it.second }.chunked(3).forEach { group ->
               val assetRow = row()
               group.forEach { asset ->
@@ -341,6 +349,8 @@ class MainActivity : Activity() {
         PriceActionV18.Signal.NONE -> "Sem novo sinal"
     }
 
+    private fun formatPrice(value: Double): String = String.format(Locale.US, "%,.${if (chartSymbol.contains("USD") && !chartSymbol.startsWith("BTC") && !chartSymbol.startsWith("ETH") && chartSymbol != "XAU/USD" && chartSymbol != "XAG/USD") 5 else 2}f", value)
+
     private fun loadCandles() {
         val symbol = chartSymbol; val period = timeframe
         candleStatus = "Consultando OHLC online..."; draw()
@@ -358,7 +368,7 @@ class MainActivity : Activity() {
                     candleSignal = if (bars.size >= 14) signalText(bars) + " • V18.2" else "Histórico insuficiente para sinais"
                     candles = bars.takeLast(5).map {
                         val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it.time * 1000))
-                        "$time  O:${it.open}  H:${it.high}  L:${it.low}  C:${it.close}"
+                        "$time  O:${formatPrice(it.open)}  H:${formatPrice(it.high)}  L:${formatPrice(it.low)}  C:${formatPrice(it.close)}"
                     }
                     if (section == "Gráficos") draw()
                 }

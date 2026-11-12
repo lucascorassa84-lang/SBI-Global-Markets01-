@@ -117,7 +117,7 @@ class MainActivity : Activity() {
             setBackgroundColor(bg)
             setPadding(22, 26, 22, 32)
         }
-        val scroll = ScrollView(this).apply { fillViewport = true; addView(root) }
+        val scroll = ScrollView(this).apply { isFillViewport = true; addView(root) }
         setContentView(scroll)
         root.addView(label("SBI Global Markets", 27f, Color.WHITE, true))
         root.addView(label("Scanner internacional • V0.2", 14f, muted))

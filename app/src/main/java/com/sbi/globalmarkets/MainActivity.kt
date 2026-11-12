@@ -41,6 +41,9 @@ class MainActivity : Activity() {
     private var timeframe = "M5"
     private var category = "Todos"
     private var section = "Mercados"
+    private var chartSymbol = "BTC/USD"
+    private var candles: List<String> = emptyList()
+    private var candleStatus = "Carregue candles reais"
     private var cryptoQuotes: Map<String, String> = emptyMap()
     private var marketQuotes: Map<String, String> = emptyMap()
     private val yahooSymbols = linkedMapOf("US100" to "%5ENDX", "US500" to "%5EGSPC", "EUR/USD" to "EURUSD%3DX", "GBP/USD" to "GBPUSD%3DX", "XAU/USD" to "GC%3DF", "XAG/USD" to "SI%3DF", "Petróleo" to "CL%3DF")
@@ -129,6 +132,25 @@ class MainActivity : Activity() {
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             }
             root.addView(nav)
+        }
+        if (section == "Gráficos") {
+            root.addView(label("Candles reais • Kraken Spot", 20f, Color.WHITE, true))
+            root.addView(label("BTC/USD e ETH/USD; demais ativos aguardam API OHLC.", 13f, muted))
+            val assets = row()
+            listOf("BTC/USD", "ETH/USD").forEach { asset ->
+                assets.addView(action(asset, asset == chartSymbol) { chartSymbol = asset; candles = emptyList(); draw() }, LinearLayout.LayoutParams(0, -2, 1f))
+            }
+            root.addView(assets)
+            val periods = row()
+            listOf("M5", "M15").forEach { period ->
+                periods.addView(action(period, period == timeframe) { timeframe = period; candles = emptyList(); draw() }, LinearLayout.LayoutParams(0, -2, 1f))
+            }
+            root.addView(periods)
+            root.addView(action("Carregar candles") { loadCandles() })
+            root.addView(label(candleStatus, 13f, muted))
+            candles.forEach { root.addView(label(it, 13f)) }
+            root.addView(label("Somente candles fechados; não são sinais.", 12f, muted))
+            return
         }
         if (section != "Mercados") {
             val details = when (section) {
@@ -257,6 +279,44 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun loadCandles() {
+        val symbol = chartSymbol
+        val period = timeframe
+        candleStatus = "Carregando..."
+        draw()
+        worker.execute {
+            val values = mutableListOf<String>()
+            var status = "Falha ao consultar"
+            try {
+                val pair = if (symbol == "BTC/USD") "XBTUSD" else "ETHUSD"
+                val interval = if (period == "M5") 5 else 15
+                val conn = URL("https://api.kraken.com/0/public/OHLC?pair=$pair&interval=$interval").openConnection() as HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                try {
+                    if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
+                    val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                    if (json.getJSONArray("error").length() > 0) throw IllegalStateException("API indisponível")
+                    val result = json.getJSONObject("result")
+                    val key = result.keys().asSequence().first { it != "last" }
+                    val bars = result.getJSONArray(key)
+                    for (i in maxOf(0, bars.length() - 11) until bars.length() - 1) {
+                        val bar = bars.getJSONArray(i)
+                        val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(bar.getLong(0) * 1000))
+                        values.add("$time O:${bar.getString(1)} H:${bar.getString(2)} L:${bar.getString(3)} C:${bar.getString(4)}")
+                    }
+                    status = "${values.size} candles fechados • $symbol • $period"
+                } finally { conn.disconnect() }
+            } catch (e: Exception) { status = "Indisponível: ${e.message}" }
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && chartSymbol == symbol && timeframe == period) {
+                    candles = values
+                    candleStatus = status
+                    if (section == "Gráficos") draw()
+                }
+            }
+        }
+    }
     override fun onDestroy() {
         refreshHandler.removeCallbacks(refreshTask)
         worker.shutdownNow()

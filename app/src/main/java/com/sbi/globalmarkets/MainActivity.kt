@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private var timeframe = "M5"
     private var category = "Todos"
+    private var section = "Mercados"
     private var cryptoQuotes: Map<String, String> = emptyMap()
     private var quoteStatus = "Cotações de cripto: toque em Atualizar"
     private var updatedAt = ""
@@ -101,6 +102,25 @@ class MainActivity : Activity() {
         root.addView(label("BTC/USD e ETH/USD: atualização automática a cada 30 segundos", 12f, accent))
         root.addView(label("Brasil: WIN e WDO cadastrados; sem cotação B3 conectada", 12f, muted))
         root.addView(label("Acompanhamento de mercados • Sem execução de ordens", 13f, muted))
+        listOf(listOf("Mercados", "Gráficos", "Scanner"), listOf("Alertas", "Configurações")).forEach { group ->
+            val nav = row()
+            group.forEach { name ->
+                nav.addView(action(name, section == name) { section = name; draw() },
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }
+            root.addView(nav)
+        }
+        if (section != "Mercados") {
+            val details = when (section) {
+                "Gráficos" -> "Candles M5/M15: aguardando dados OHLC reais."
+                "Scanner" -> "Price Action V18: motor original ainda não integrado. Sem sinais fictícios."
+                "Alertas" -> "Notificações Android: pendentes da validação dos sinais."
+                else -> "Versão 0.2. Kraken para cripto; outros provedores pendentes."
+            }
+            root.addView(label(section, 22f, Color.WHITE, true))
+            root.addView(label(details, 16f, muted))
+            return
+        }
 
         root.addView(label("Tempo gráfico", 18f, Color.WHITE, true))
         val times = row()

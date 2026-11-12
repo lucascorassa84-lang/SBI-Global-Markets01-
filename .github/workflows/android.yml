@@ -3,8 +3,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main, feature/android-project]
-  pull_request:
-    branches: [main]
 concurrency:
   group: android-debug-signing
   cancel-in-progress: false

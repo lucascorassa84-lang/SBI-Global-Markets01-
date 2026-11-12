@@ -52,8 +52,6 @@ class MainActivity : Activity() {
     private val markets = listOf(
         Triple("Índices", "US100", "Nasdaq 100 • provedor pendente"),
         Triple("Índices", "US500", "S&P 500 • provedor pendente"),
-        Triple("Brasil", "WIN", "Mini-índice futuro B3 • contrato vigente • dados pendentes"),
-        Triple("Brasil", "WDO", "Mini-dólar futuro B3 • contrato vigente • dados pendentes"),
         Triple("Forex", "EUR/USD", "Euro / Dólar • provedor pendente"),
         Triple("Forex", "GBP/USD", "Libra / Dólar • provedor pendente"),
         Triple("Metais", "XAU/USD", "Ouro • provedor pendente"),
@@ -123,7 +121,6 @@ class MainActivity : Activity() {
         root.addView(label("Scanner internacional • V0.2", 14f, muted))
         root.addView(label("Cripto: WebSocket Kraken • demais mercados: consultas indicativas", 12f, accent))
         root.addView(label(streamStatus, 12f, muted))
-        root.addView(label("Brasil: WIN e WDO cadastrados; sem cotação B3 conectada", 12f, muted))
         root.addView(label("Acompanhamento de mercados • Sem execução de ordens", 13f, muted))
         listOf(listOf("Mercados", "Gráficos", "Scanner"), listOf("Alertas", "Configurações")).forEach { group ->
             val nav = row()
@@ -172,7 +169,7 @@ class MainActivity : Activity() {
         }
         root.addView(times)
         root.addView(label("Selecione o mercado", 18f, Color.WHITE, true))
-        listOf(listOf("Todos", "Índices", "Brasil"), listOf("Forex", "Metais", "Energia"), listOf("Cripto")).forEach { group ->
+        listOf(listOf("Todos", "Índices"), listOf("Forex", "Metais", "Energia"), listOf("Cripto")).forEach { group ->
             val r = row()
             group.forEach { name ->
                 r.addView(action(name, category == name) { category = name; draw() },
@@ -191,8 +188,6 @@ class MainActivity : Activity() {
             item.addView(label(market.third, 13f, muted))
             if (market.first == "Cripto") {
                 item.addView(label(cryptoQuotes[market.second] ?: "Preço indisponível", 18f, accent, true))
-            } else if (market.first == "Brasil") {
-                item.addView(label("Dados WIN/WDO: distribuidor B3 necessário", 14f, muted))
             } else {
                 item.addView(label(marketQuotes[market.second] ?: "Cotação indisponível", 17f, accent, true))
                 item.addView(label("Fonte Yahoo Finance não oficial • pode haver atraso", 12f, muted))

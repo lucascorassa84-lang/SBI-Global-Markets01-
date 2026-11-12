@@ -27,6 +27,8 @@ class MainActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val refreshHandler = Handler(Looper.getMainLooper())
     private var polling = false
+    private var krakenStream: KrakenStream? = null
+    private var streamStatus = "WebSocket: conectando..."
     private val refreshTask = object : Runnable {
         override fun run() {
             if (!isFinishing && !isDestroyed) {
@@ -66,6 +68,21 @@ class MainActivity : Activity() {
         refreshHandler.post(refreshTask)
     }
 
+    override fun onStart() {
+        super.onStart()
+        krakenStream = KrakenStream(
+            { symbol, price -> runOnUiThread {
+                cryptoQuotes = cryptoQuotes + (symbol to price)
+                if (section == "Mercados" && (category == "Todos" || category == "Cripto")) draw()
+            } },
+            { status -> runOnUiThread { streamStatus = status; if (section == "Mercados") draw() } }
+        ).also { it.start() }
+    }
+    override fun onStop() {
+        krakenStream?.stop()
+        krakenStream = null
+        super.onStop()
+    }
     private fun label(value: String, size: Float = 16f, color: Int = Color.WHITE, bold: Boolean = false): TextView {
         return TextView(this).apply {
             text = value
@@ -101,7 +118,8 @@ class MainActivity : Activity() {
         setContentView(scroll)
         root.addView(label("SBI Global Markets", 27f, Color.WHITE, true))
         root.addView(label("Scanner internacional • V0.2", 14f, muted))
-        root.addView(label("Consultas indicativas online a cada 60 segundos (app aberto)", 12f, accent))
+        root.addView(label("Cripto: WebSocket Kraken • demais mercados: consultas indicativas", 12f, accent))
+        root.addView(label(streamStatus, 12f, muted))
         root.addView(label("Brasil: WIN e WDO cadastrados; sem cotação B3 conectada", 12f, muted))
         root.addView(label("Acompanhamento de mercados • Sem execução de ordens", 13f, muted))
         listOf(listOf("Mercados", "Gráficos", "Scanner"), listOf("Alertas", "Configurações")).forEach { group ->
@@ -117,7 +135,7 @@ class MainActivity : Activity() {
                 "Gráficos" -> "Candles M5/M15: aguardando dados OHLC reais."
                 "Scanner" -> "Price Action V18: motor original ainda não integrado. Sem sinais fictícios."
                 "Alertas" -> "Notificações Android: pendentes da validação dos sinais."
-                else -> "Versão 0.2. Kraken para cripto; outros provedores pendentes."
+                else -> "Versão 0.3. Kraken WebSocket para cripto; outros provedores pendentes."
             }
             root.addView(label(section, 22f, Color.WHITE, true))
             root.addView(label(details, 16f, muted))

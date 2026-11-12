@@ -143,7 +143,6 @@ class MainActivity : Activity() {
                 assetRow.addView(action(asset, asset == chartSymbol) { chartSymbol = asset; candles = emptyList(); chartBars = emptyList(); draw() }, LinearLayout.LayoutParams(0, -2, 1f))
             }
               root.addView(assetRow)
-              }
             }
             val periods = row()
             listOf("M5", "M15").forEach { period ->

@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private var chartSymbol = "BTC/USD"
     private var candles: List<String> = emptyList()
     private var candleStatus = "Carregue candles reais"
+    private var candleSignal = "Sinal V18.2: aguardando candles"
     private var cryptoQuotes: Map<String, String> = emptyMap()
     private var marketQuotes: Map<String, String> = emptyMap()
     private val yahooSymbols = linkedMapOf("US100" to "%5ENDX", "US500" to "%5EGSPC", "EUR/USD" to "EURUSD%3DX", "GBP/USD" to "GBPUSD%3DX", "XAU/USD" to "GC%3DF", "XAG/USD" to "SI%3DF", "Petróleo" to "CL%3DF")
@@ -145,6 +146,7 @@ class MainActivity : Activity() {
             root.addView(periods)
             root.addView(action("Carregar candles") { loadCandles() })
             root.addView(label(candleStatus, 13f, muted))
+            root.addView(label(candleSignal, 17f, accent, true))
             candles.forEach { root.addView(label(it, 13f)) }
             root.addView(label("Somente candles fechados; não são sinais.", 12f, muted))
             return
@@ -281,6 +283,7 @@ class MainActivity : Activity() {
         draw()
         worker.execute {
             val values = mutableListOf<String>()
+            val parsed = mutableListOf<PriceActionV18.Candle>()
             var status = "Falha ao consultar"
             try {
                 val pair = if (symbol == "BTC/USD") "XBTUSD" else "ETHUSD"
@@ -295,10 +298,11 @@ class MainActivity : Activity() {
                     val result = json.getJSONObject("result")
                     val key = result.keys().asSequence().first { it != "last" }
                     val bars = result.getJSONArray(key)
-                    for (i in maxOf(0, bars.length() - 11) until bars.length() - 1) {
+                    for (i in 0 until bars.length() - 1) {
                         val bar = bars.getJSONArray(i)
                         val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(bar.getLong(0) * 1000))
-                        values.add("$time O:${bar.getString(1)} H:${bar.getString(2)} L:${bar.getString(3)} C:${bar.getString(4)}")
+                        parsed.add(PriceActionV18.Candle(bar.getLong(0), bar.getDouble(1), bar.getDouble(2), bar.getDouble(3), bar.getDouble(4)))
+                        if (i >= bars.length() - 11) values.add("$time O:${bar.getString(1)} H:${bar.getString(2)} L:${bar.getString(3)} C:${bar.getString(4)}")
                     }
                     status = "${values.size} candles fechados • $symbol • $period"
                 } finally { conn.disconnect() }
@@ -307,6 +311,12 @@ class MainActivity : Activity() {
                 if (!isFinishing && !isDestroyed && chartSymbol == symbol && timeframe == period) {
                     candles = values
                     candleStatus = status
+                    candleSignal = when (PriceActionV18.evaluateLatest(parsed)) {
+                        PriceActionV18.Signal.BUY -> "↑ COMPRA • V18.2"
+                        PriceActionV18.Signal.SELL -> "↓ VENDA • V18.2"
+                        PriceActionV18.Signal.WAIT -> "◆ AGUARDAR • V18.2"
+                        PriceActionV18.Signal.NONE -> "Sem novo sinal no candle fechado"
+                    }
                     if (section == "Gráficos") draw()
                 }
             }

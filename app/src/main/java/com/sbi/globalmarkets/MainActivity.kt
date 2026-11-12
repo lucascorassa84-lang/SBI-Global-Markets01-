@@ -45,6 +45,9 @@ class MainActivity : Activity() {
     private var candles: List<String> = emptyList()
     private var candleStatus = "Carregue candles reais"
     private var candleSignal = "Sinal V18.2: aguardando candles"
+    private var chartBars: List<PriceActionV18.Candle> = emptyList()
+    private var scanResults: Map<String, String> = emptyMap()
+    private var scanStatus = "Toque em Atualizar scanner"
     private var cryptoQuotes: Map<String, String> = emptyMap()
     private var marketQuotes: Map<String, String> = emptyMap()
     private val yahooSymbols = linkedMapOf("US100" to "%5ENDX", "US500" to "%5EGSPC", "EUR/USD" to "EURUSD%3DX", "GBP/USD" to "GBPUSD%3DX", "XAU/USD" to "GC%3DF", "XAG/USD" to "SI%3DF", "Petróleo" to "CL%3DF")
@@ -119,7 +122,7 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(root) }
         setContentView(scroll)
         root.addView(label("SBI Global Markets", 27f, Color.WHITE, true))
-        root.addView(label("Scanner internacional • V0.2", 14f, muted))
+        root.addView(label("Scanner internacional • V0.4", 14f, muted))
         root.addView(label("Cripto: WebSocket Kraken • demais mercados: consultas indicativas", 12f, accent))
         root.addView(label(streamStatus, 12f, muted))
         root.addView(label("Acompanhamento de mercados • Sem execução de ordens", 13f, muted))
@@ -133,12 +136,15 @@ class MainActivity : Activity() {
         }
         if (section == "Gráficos") {
             root.addView(label("Candles reais • Kraken Spot", 20f, Color.WHITE, true))
-            root.addView(label("BTC/USD e ETH/USD; demais ativos aguardam API OHLC.", 13f, muted))
-            val assets = row()
-            listOf("BTC/USD", "ETH/USD").forEach { asset ->
-                assets.addView(action(asset, asset == chartSymbol) { chartSymbol = asset; candles = emptyList(); draw() }, LinearLayout.LayoutParams(0, -2, 1f))
+            root.addView(label("Cripto: Kraken Spot • demais ativos: Yahoo Finance indicativo.", 13f, muted))
+            markets.map { it.second }.chunked(3).forEach { group ->
+              val assetRow = row()
+              group.forEach { asset ->
+                assetRow.addView(action(asset, asset == chartSymbol) { chartSymbol = asset; candles = emptyList(); chartBars = emptyList(); draw() }, LinearLayout.LayoutParams(0, -2, 1f))
             }
-            root.addView(assets)
+              root.addView(assetRow)
+              }
+            }
             val periods = row()
             listOf("M5", "M15").forEach { period ->
                 periods.addView(action(period, period == timeframe) { timeframe = period; candles = emptyList(); draw() }, LinearLayout.LayoutParams(0, -2, 1f))
@@ -147,8 +153,17 @@ class MainActivity : Activity() {
             root.addView(action("Carregar candles") { loadCandles() })
             root.addView(label(candleStatus, 13f, muted))
             root.addView(label(candleSignal, 17f, accent, true))
+            if (chartBars.isNotEmpty()) root.addView(CandleChart(this, chartBars))
             candles.forEach { root.addView(label(it, 13f)) }
-            root.addView(label("Somente candles fechados; não são sinais.", 12f, muted))
+            root.addView(label("Sinais experimentais baseados apenas em candles fechados; não são recomendações.", 12f, muted))
+            return
+        }
+        if (section == "Scanner") {
+            root.addView(label("Scanner Price Action V18.2 • M5/M15", 20f, Color.WHITE, true))
+            root.addView(action("Atualizar scanner de todos os mercados") { scanMarkets() })
+            root.addView(label(scanStatus, 13f, muted))
+            markets.forEach { market -> root.addView(label(market.second + ": " + (scanResults[market.second] ?: "Não consultado"), 16f)) }
+            root.addView(label("Apenas candles fechados. Fontes e instrumentos diferentes dos CFDs da corretora.", 12f, muted))
             return
         }
         if (section != "Mercados") {
@@ -194,7 +209,7 @@ class MainActivity : Activity() {
                 item.addView(label(marketQuotes[market.second] ?: "Cotação indisponível", 17f, accent, true))
                 item.addView(label("Fonte Yahoo Finance não oficial • pode haver atraso", 12f, muted))
             }
-            item.addView(label("Sinal $timeframe: indisponível (motor V18 pendente)", 12f, muted))
+            item.addView(label("Sinal $timeframe: " + (scanResults[market.second] ?: "toque em Scanner para consultar"), 12f, muted))
             root.addView(item, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 })
         }
         root.addView(action("Atualizar cotações online") { refreshCrypto() })
@@ -276,48 +291,99 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun fetchBars(symbol: String, period: String): List<PriceActionV18.Candle> {
+        val interval = if (period == "M5") 5 else 15
+        val isCrypto = symbol == "BTC/USD" || symbol == "ETH/USD"
+        val endpoint = if (isCrypto) {
+            val pair = if (symbol == "BTC/USD") "XBTUSD" else "ETHUSD"
+            "https://api.kraken.com/0/public/OHLC?pair=$pair&interval=$interval"
+        } else {
+            val ticker = yahooSymbols[symbol] ?: return emptyList()
+            "https://query1.finance.yahoo.com/v8/finance/chart/$ticker?interval=${interval}m&range=5d"
+        }
+        val conn = URL(endpoint).openConnection() as HttpURLConnection
+        conn.connectTimeout = 9000; conn.readTimeout = 9000
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+        try {
+            if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
+            val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            val result = mutableListOf<PriceActionV18.Candle>()
+            if (isCrypto) {
+                if (json.getJSONArray("error").length() != 0) throw IllegalStateException("Kraken indisponível")
+                val obj = json.getJSONObject("result")
+                val key = obj.keys().asSequence().first { it != "last" }
+                val rows = obj.getJSONArray(key)
+                for (i in 0 until rows.length() - 1) {
+                    val row = rows.getJSONArray(i)
+                    result.add(PriceActionV18.Candle(row.getLong(0), row.getDouble(1), row.getDouble(2), row.getDouble(3), row.getDouble(4)))
+                }
+            } else {
+                val chart = json.getJSONObject("chart").getJSONArray("result").getJSONObject(0)
+                val times = chart.getJSONArray("timestamp")
+                val quote = chart.getJSONObject("indicators").getJSONArray("quote").getJSONObject(0)
+                val opens = quote.getJSONArray("open"); val highs = quote.getJSONArray("high")
+                val lows = quote.getJSONArray("low"); val closes = quote.getJSONArray("close")
+                val now = System.currentTimeMillis() / 1000L
+                for (i in 0 until times.length()) {
+                    val t = times.getLong(i)
+                    if (t + interval * 60 > now) continue
+                    if (opens.isNull(i) || highs.isNull(i) || lows.isNull(i) || closes.isNull(i)) continue
+                    result.add(PriceActionV18.Candle(t, opens.getDouble(i), highs.getDouble(i), lows.getDouble(i), closes.getDouble(i)))
+                }
+            }
+            return result
+        } finally { conn.disconnect() }
+    }
+
+    private fun signalText(bars: List<PriceActionV18.Candle>): String = when (PriceActionV18.evaluateLatest(bars)) {
+        PriceActionV18.Signal.BUY -> "↑ COMPRA"
+        PriceActionV18.Signal.SELL -> "↓ VENDA"
+        PriceActionV18.Signal.WAIT -> "◆ AGUARDAR"
+        PriceActionV18.Signal.NONE -> "Sem novo sinal"
+    }
+
     private fun loadCandles() {
-        val symbol = chartSymbol
-        val period = timeframe
-        candleStatus = "Carregando..."
-        draw()
+        val symbol = chartSymbol; val period = timeframe
+        candleStatus = "Consultando OHLC online..."; draw()
         worker.execute {
-            val values = mutableListOf<String>()
-            val parsed = mutableListOf<PriceActionV18.Candle>()
-            var status = "Falha ao consultar"
+            var data = emptyList<PriceActionV18.Candle>()
+            var status = "Sem dados disponíveis"
             try {
-                val pair = if (symbol == "BTC/USD") "XBTUSD" else "ETHUSD"
-                val interval = if (period == "M5") 5 else 15
-                val conn = URL("https://api.kraken.com/0/public/OHLC?pair=$pair&interval=$interval").openConnection() as HttpURLConnection
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                try {
-                    if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
-                    val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-                    if (json.getJSONArray("error").length() > 0) throw IllegalStateException("API indisponível")
-                    val result = json.getJSONObject("result")
-                    val key = result.keys().asSequence().first { it != "last" }
-                    val bars = result.getJSONArray(key)
-                    for (i in 0 until bars.length() - 1) {
-                        val bar = bars.getJSONArray(i)
-                        val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(bar.getLong(0) * 1000))
-                        parsed.add(PriceActionV18.Candle(bar.getLong(0), bar.getDouble(1), bar.getDouble(2), bar.getDouble(3), bar.getDouble(4)))
-                        if (i >= bars.length() - 11) values.add("$time O:${bar.getString(1)} H:${bar.getString(2)} L:${bar.getString(3)} C:${bar.getString(4)}")
-                    }
-                    status = "${values.size} candles fechados • $symbol • $period"
-                } finally { conn.disconnect() }
-            } catch (e: Exception) { status = "Indisponível: ${e.message}" }
+                data = fetchBars(symbol, period)
+                status = "${data.size} candles fechados • $symbol • $period"
+            } catch (e: Exception) { status = "Falha na consulta: ${e.message}" }
+            val bars = data; val message = status
             runOnUiThread {
                 if (!isFinishing && !isDestroyed && chartSymbol == symbol && timeframe == period) {
-                    candles = values
-                    candleStatus = status
-                    candleSignal = when (PriceActionV18.evaluateLatest(parsed)) {
-                        PriceActionV18.Signal.BUY -> "↑ COMPRA • V18.2"
-                        PriceActionV18.Signal.SELL -> "↓ VENDA • V18.2"
-                        PriceActionV18.Signal.WAIT -> "◆ AGUARDAR • V18.2"
-                        PriceActionV18.Signal.NONE -> "Sem novo sinal no candle fechado"
+                    chartBars = bars; candleStatus = message
+                    candleSignal = if (bars.size >= 14) signalText(bars) + " • V18.2" else "Histórico insuficiente para sinais"
+                    candles = bars.takeLast(5).map {
+                        val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it.time * 1000))
+                        "$time  O:${it.open}  H:${it.high}  L:${it.low}  C:${it.close}"
                     }
                     if (section == "Gráficos") draw()
+                }
+            }
+        }
+    }
+
+    private fun scanMarkets() {
+        val period = timeframe
+        scanStatus = "Consultando mercados online; aguarde..."
+        draw()
+        worker.execute {
+            val results = mutableMapOf<String, String>()
+            for (market in markets) {
+                try {
+                    val bars = fetchBars(market.second, period)
+                    results[market.second] = if (bars.size >= 14) signalText(bars) else "Histórico indisponível"
+                } catch (_: Exception) { results[market.second] = "Fonte indisponível" }
+            }
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) {
+                    scanResults = results
+                    scanStatus = "Consulta concluída • $period • ${java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date())}"
+                    if (section == "Scanner" || section == "Mercados") draw()
                 }
             }
         }

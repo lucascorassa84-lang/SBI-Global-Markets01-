@@ -44,8 +44,8 @@ class MainActivity : Activity() {
     private val markets = listOf(
         Triple("Índices", "US100", "Nasdaq 100 • provedor pendente"),
         Triple("Índices", "US500", "S&P 500 • provedor pendente"),
-        Triple("Brasil", "IBOV", "Ibovespa B3 • índice à vista • dados pendentes"),
-        Triple("Brasil", "WIN", "Mini-índice futuro B3 • contrato vigente e dados pendentes"),
+        Triple("Brasil", "WIN", "Mini-índice futuro B3 • contrato vigente • dados pendentes"),
+        Triple("Brasil", "WDO", "Mini-dólar futuro B3 • contrato vigente • dados pendentes"),
         Triple("Forex", "EUR/USD", "Euro / Dólar • provedor pendente"),
         Triple("Forex", "GBP/USD", "Libra / Dólar • provedor pendente"),
         Triple("Metais", "XAU/USD", "Ouro • provedor pendente"),
@@ -99,7 +99,7 @@ class MainActivity : Activity() {
         root.addView(label("SBI Global Markets", 27f, Color.WHITE, true))
         root.addView(label("Scanner internacional • V0.2", 14f, muted))
         root.addView(label("BTC/USD e ETH/USD: atualização automática a cada 30 segundos", 12f, accent))
-        root.addView(label("Brasil: IBOV e WIN cadastrados; sem cotação B3 conectada", 12f, muted))
+        root.addView(label("Brasil: WIN e WDO cadastrados; sem cotação B3 conectada", 12f, muted))
         root.addView(label("Acompanhamento de mercados • Sem execução de ordens", 13f, muted))
 
         root.addView(label("Tempo gráfico", 18f, Color.WHITE, true))

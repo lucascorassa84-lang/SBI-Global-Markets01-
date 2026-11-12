@@ -31,7 +31,7 @@ class MainActivity : Activity() {
         override fun run() {
             if (!isFinishing && !isDestroyed) {
                 refreshCrypto()
-                refreshHandler.postDelayed(this, 30_000L)
+                refreshHandler.postDelayed(this, 60_000L)
             }
         }
     }
@@ -40,6 +40,8 @@ class MainActivity : Activity() {
     private var category = "Todos"
     private var section = "Mercados"
     private var cryptoQuotes: Map<String, String> = emptyMap()
+    private var marketQuotes: Map<String, String> = emptyMap()
+    private val yahooSymbols = linkedMapOf("US100" to "%5ENDX", "US500" to "%5EGSPC", "EUR/USD" to "EURUSD%3DX", "GBP/USD" to "GBPUSD%3DX", "XAU/USD" to "GC%3DF", "XAG/USD" to "SI%3DF", "Petróleo" to "CL%3DF")
     private var quoteStatus = "Cotações de cripto: toque em Atualizar"
     private var updatedAt = ""
     private val markets = listOf(
@@ -99,7 +101,7 @@ class MainActivity : Activity() {
         setContentView(scroll)
         root.addView(label("SBI Global Markets", 27f, Color.WHITE, true))
         root.addView(label("Scanner internacional • V0.2", 14f, muted))
-        root.addView(label("BTC/USD e ETH/USD: atualização automática a cada 30 segundos", 12f, accent))
+        root.addView(label("Consultas indicativas online a cada 60 segundos (app aberto)", 12f, accent))
         root.addView(label("Brasil: WIN e WDO cadastrados; sem cotação B3 conectada", 12f, muted))
         root.addView(label("Acompanhamento de mercados • Sem execução de ordens", 13f, muted))
         listOf(listOf("Mercados", "Gráficos", "Scanner"), listOf("Alertas", "Configurações")).forEach { group ->
@@ -149,13 +151,16 @@ class MainActivity : Activity() {
             item.addView(label(market.third, 13f, muted))
             if (market.first == "Cripto") {
                 item.addView(label(cryptoQuotes[market.second] ?: "Preço indisponível", 18f, accent, true))
+            } else if (market.first == "Brasil") {
+                item.addView(label("Dados WIN/WDO: distribuidor B3 necessário", 14f, muted))
             } else {
-                item.addView(label("Cotação não conectada", 14f, muted))
+                item.addView(label(marketQuotes[market.second] ?: "Cotação indisponível", 17f, accent, true))
+                item.addView(label("Fonte Yahoo Finance não oficial • pode haver atraso", 12f, muted))
             }
             item.addView(label("Sinal $timeframe: indisponível (motor V18 pendente)", 12f, muted))
             root.addView(item, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 })
         }
-        root.addView(action("Atualizar cotações de criptomoedas") { refreshCrypto() })
+        root.addView(action("Atualizar cotações online") { refreshCrypto() })
         root.addView(label(quoteStatus, 13f, muted))
         if (updatedAt.isNotEmpty()) root.addView(label("Última consulta: $updatedAt", 12f, muted))
         root.addView(label("Aviso: preço indicativo de fonte externa. Sem dados de candles ou sinais operacionais.", 12f, muted))
@@ -164,10 +169,11 @@ class MainActivity : Activity() {
     private fun refreshCrypto() {
         if (polling) return
         polling = true
-        quoteStatus = "Consultando Kraken..."
+        quoteStatus = "Consultando fontes online..."
         draw()
         worker.execute {
             var result: Map<String, String>? = null
+            val yahooResult = mutableMapOf<String, String>()
             var error = "Falha na consulta"
             try {
                 val connection = URL("https://api.kraken.com/0/public/Ticker?pair=XBTUSD,ETHUSD").openConnection() as HttpURLConnection
@@ -195,6 +201,28 @@ class MainActivity : Activity() {
             } catch (ex: Exception) {
                 error = "Consulta indisponível: ${ex.message ?: "verifique a conexão"}"
             }
+            val targets = yahooSymbols.filter { entry ->
+                category == "Todos" || markets.any { it.second == entry.key && it.first == category }
+            }
+            for ((symbol, ticker) in targets) {
+                try {
+                    val conn = URL("https://query1.finance.yahoo.com/v8/finance/chart/$ticker?interval=5m&range=1d").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 7000
+                    conn.readTimeout = 7000
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+                    try {
+                        if (conn.responseCode != 200) continue
+                        val data = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                        val chart = data.getJSONObject("chart").getJSONArray("result").getJSONObject(0)
+                        val meta = chart.getJSONObject("meta")
+                        val price = meta.optDouble("regularMarketPrice", Double.NaN)
+                        if (!price.isNaN()) {
+                            val currency = meta.optString("currency", "")
+                            yahooResult[symbol] = String.format(Locale.US, "%,.3f %s", price, currency)
+                        }
+                    } finally { conn.disconnect() }
+                } catch (_: Exception) { /* display unavailable, never invent a quote */ }
+            }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (result != null) {
@@ -204,6 +232,7 @@ class MainActivity : Activity() {
                 } else {
                     quoteStatus = error
                 }
+                marketQuotes = marketQuotes + yahooResult
                 polling = false
                 draw()
             }

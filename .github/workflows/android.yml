@@ -5,6 +5,9 @@ on:
     branches: [main, feature/android-project]
   pull_request:
     branches: [main]
+concurrency:
+  group: android-debug-signing
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,8 +20,30 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Restore debug signing key
+        id: signing-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sbi-global-markets-debug-signing-v1
+      - name: Create debug signing key when missing
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+      - name: Save debug signing key for subsequent builds
+        if: steps.signing-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sbi-global-markets-debug-signing-v1
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon
+      - name: Show APK signing certificate fingerprint
+        shell: bash
+        run: keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep SHA256
       - uses: actions/upload-artifact@v4
         with:
           name: SBI-Global-Markets-debug
